@@ -76,7 +76,15 @@ RUNTIMES="ruby@latest node@latest"
 # The sudo lines rely on prime_sudo's warm timestamp. Under `gum spin` stdin is
 # /dev/null, so a lapsed one fails the step rather than hanging on a password
 # prompt nobody can see.
+#
+# `set -e` is load-bearing. The block ends with a `killall … || true`, and without it
+# that final line is what `step` reads the exit status from — so a sudo line that
+# failed on a lapsed timestamp was reported as a clean run. The cost is that a failure
+# skips the rest, killall included, which leaves the earlier writes on disk but not
+# reloaded. Knowing the step failed is worth more than half-applying it in silence.
 MACOS_SETTINGS='
+set -e
+
 defaults write com.apple.dock autohide -bool true
 defaults write com.apple.dock orientation left
 defaults write com.apple.dock tilesize -int 52
@@ -119,6 +127,8 @@ killall Dock Finder SystemUIServer 2>/dev/null || true
 # its preferences in memory and writes them back over yours when it quits. Nothing has
 # launched yet on the fresh box this script is for. On a rerun, quit the app first.
 APP_SETTINGS='
+set -e
+
 defaults write com.objective-see.oversight startAtLogin -bool true
 defaults write com.objective-see.oversight noIconMode -bool true
 
@@ -317,6 +327,30 @@ install_config() { # relative_path destination
   note "installed $2"
 }
 
+# Prints the BREW_PACKAGES entries that are not installed yet, one per line.
+#
+# `brew install` on a package that is already there still costs about a second, so a
+# rerun on a provisioned machine spent a minute behind a spinner that could not say
+# why it was still going. Two `brew list` calls answer the same question for the whole
+# machine in under a twentieth of a second, which is what makes the rerun case instant.
+#
+# Two spellings have to be normalised. Tap-qualified entries list under their bare name
+# (dmtrkovalenko/fff/fff-mcp installs as fff-mcp), and version aliases list under the
+# major they resolve to (postgresql as postgresql@18) — miss that one and postgresql is
+# reported missing forever, reinstalling on every run.
+missing_packages() {
+  local installed pkg name
+  installed=" $(brew list --formula -1 2>/dev/null | tr '\n' ' ')$(brew list --cask -1 2>/dev/null | tr '\n' ' ') "
+
+  for pkg in $BREW_PACKAGES; do
+    name="${pkg##*/}"
+    case "$installed" in
+      *" $name "* | *" $name@"*) ;;
+      *) printf '%s\n' "$pkg" ;;
+    esac
+  done
+}
+
 main() {
   detect_gum
   banner "dev-setup · macOS bootstrap"
@@ -336,8 +370,20 @@ main() {
   step "gum" "brew install gum"
   detect_gum
 
-  if confirm "Install $(set -- $BREW_PACKAGES; echo $#) Homebrew formulae and casks?"; then
-    step "brew packages" "brew install $BREW_PACKAGES"
+  # Asked and installed in terms of what is actually missing, so a rerun on a provisioned
+  # machine answers in a fraction of a second instead of sitting on a spinner. The count
+  # goes out as a note first: under gum that line stays on screen above the spinner, which
+  # is the difference between "still working" and "stuck".
+  MISSING="$(missing_packages)"
+  TOTAL=$(set -- $BREW_PACKAGES; echo $#)
+  COUNT=$(set -- $MISSING; echo $#)
+
+  if [ "$COUNT" = 0 ]; then
+    RESULTS+=("brew packages,ok")
+    note "brew packages: all $TOTAL already installed"
+  elif confirm "Install $COUNT of $TOTAL Homebrew formulae and casks?"; then
+    note "installing $COUNT: $(echo $MISSING)"
+    step "brew packages" "brew install $MISSING"
   else
     RESULTS+=("brew packages,skipped")
     # warn, not error: you answered the question. Red is for things that broke.
@@ -550,6 +596,23 @@ self_test() {
   fi
   echo "ok: MACOS_SETTINGS parses"
 
+  # Both blocks end with a command that cannot fail, so without `set -e` at the top their
+  # exit status says nothing about the settings — a failed sudo line came back as a clean
+  # run. Check the mechanism works, then that both blocks actually use it.
+  if sh -c 'set -e
+false
+true || true'; then
+    echo "FAIL: set -e does not make a mid-block failure reach the exit status"
+    exit 1
+  fi
+  for settings in "$MACOS_SETTINGS" "$APP_SETTINGS"; do
+    if ! printf '%s' "$settings" | grep -qx 'set -e'; then
+      echo "FAIL: a settings block does not start with set -e"
+      exit 1
+    fi
+  done
+  echo "ok: both settings blocks report a mid-block failure"
+
   # Same reasoning for APP_SETTINGS, with one addition: it embeds a double-quoted string
   # inside a single-quoted block, which is exactly the kind of quoting that parses wrong
   # long after you stopped looking at it.
@@ -577,6 +640,28 @@ self_test() {
     esac
   done
   echo "ok: every APP_SETTINGS domain maps to an installed package"
+
+  # missing_packages has to normalise two spellings, and getting either wrong means
+  # reinstalling something on every run forever. `brew` is shadowed by a function here, so
+  # the check reads a fixed list rather than whatever this machine happens to have.
+  local real_packages missing
+  real_packages="$BREW_PACKAGES"
+  BREW_PACKAGES="fd postgresql owner/tap/tool absent-thing"
+  brew() { # list --formula -1 | list --cask -1
+    case "$2" in
+      --formula) printf 'fd\npostgresql@18\n' ;;
+      --cask) printf 'tool\n' ;;
+    esac
+  }
+  missing="$(missing_packages)"
+  unset -f brew
+  BREW_PACKAGES="$real_packages"
+
+  if [ "$missing" != "absent-thing" ]; then
+    echo "FAIL: missing_packages returned '$missing', expected 'absent-thing'"
+    exit 1
+  fi
+  echo "ok: missing_packages resolves version aliases and tap-qualified names"
 }
 
 case "${1-}" in
