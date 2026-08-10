@@ -2,3 +2,6 @@
 
 # Scratch space for subagent-driven plan execution
 .superpowers/
+
+# Planning artifacts from superpowers skills, kept locally
+docs/superpowers/
