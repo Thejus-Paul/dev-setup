@@ -37,7 +37,7 @@ preferences. Answering no to one does not answer no to the others.
 
 | group | packages |
 | --- | --- |
-| Shell and search | `fd` `ripgrep` `fzf` `fff-mcp` `zoxide` `mise` `gh` `lazygit` `nvim` `topgrade` `rtk` `mole` |
+| Shell and search | `fd` `ripgrep` `fzf` `fff-mcp` `zoxide` `mise` `gh` `lazygit` `neovim` `topgrade` `rtk` `mole` |
 | Windows and desktop | `amethyst` `loop` `monitorcontrol` `mos` `raycast` `meetingbar` |
 | Security | `keepassxc` `gnupg` `lulu` `knockknock` `oversight` `taskexplorer` |
 | Apps | `warp` `helium-browser` `obsidian` `slack` `zoom` `iina` `localsend` |
@@ -71,6 +71,13 @@ something on a different machine, which is why MonitorControl and TaskExplorer
 write nothing: one keys brightness by monitor serial, the other keeps a first-run
 flag and a debug toggle.
 
+**Neovim** — the LazyVim starter is cloned into `~/.config/nvim` and its `.git` is
+deleted, which is what LazyVim's own install does: the starter is a seed you own
+and edit, not a checkout to pull from. It needs no new package — the Nerd Font,
+`fd`, `ripgrep`, `fzf` and `lazygit` it wants are already in the bundle. An
+existing `~/.config/nvim` is left alone, because that one holds your plugins and
+keymaps rather than a snapshot.
+
 **Warp** — the exception. Warp keeps its configuration in `~/.warp`, and its
 plist is a mirror it writes but does not read back, already drifted from the real
 settings on five of six keys. So its files are tracked in `config/warp/` and
@@ -98,8 +105,9 @@ pretending they are handled.
 ```
 
 Covers the parts that are easy to get wrong and expensive to discover late: that
-`append_once` and `install_config` never duplicate or clobber, that a failing step
-is recorded rather than fatal, that the gum gate stays off without a terminal,
+`append_once`, `install_config` and `install_lazyvim` never duplicate or clobber,
+that a failing step is recorded rather than fatal, that the gum gate stays off
+without a terminal,
 that `confirm` never blocks when nobody is there to answer, that both settings
 blocks parse, and that every preference domain maps back to a package the bundle
 installs.

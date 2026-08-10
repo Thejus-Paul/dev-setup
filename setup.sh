@@ -31,6 +31,11 @@ BREW_SHELLENV='eval "$(/opt/homebrew/bin/brew shellenv)"'
 SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
 RAW_URL="https://raw.githubusercontent.com/Thejus-Paul/dev-setup/main"
 
+# LazyVim is a Neovim distribution, not a package: nothing to brew, only a starter config to
+# clone into ~/.config/nvim. It needs a Nerd Font, git, curl, fd, ripgrep, fzf and lazygit —
+# all of which the bundle below already installs, which is why adding it costs no new package.
+LAZYVIM_STARTER="https://github.com/LazyVim/starter"
+
 # Zoom installation requires a password.
 # libyaml, readline and zlib are ruby-build dependencies; shared-mime-info is a mimemagic one.
 # `postgresql` is an alias for the latest major, currently postgresql@18.
@@ -53,8 +58,8 @@ RAW_URL="https://raw.githubusercontent.com/Thejus-Paul/dev-setup/main"
 # it does not recognise, so it changes how the machine behaves rather than just describing it.
 BREW_PACKAGES="amethyst dmtrkovalenko/fff/fff-mcp fd font-fira-code-nerd-font fzf gh gnupg \
 helium-browser iina keepassxc knockknock lazygit libyaml localsend loop lulu meetingbar mise \
-mole monitorcontrol mos nvim obsidian oversight postgresql raycast readline redis ripgrep rtk \
-shared-mime-info slack taskexplorer topgrade warp zlib zoom zoxide"
+mole monitorcontrol mos neovim obsidian oversight postgresql raycast readline redis ripgrep \
+rtk shared-mime-info slack taskexplorer topgrade warp zlib zoom zoxide"
 
 # Homebrew 6 asks for confirmation before installing dependencies. The gum
 # branch of `step` cannot display that prompt, and the plain branch should
@@ -330,6 +335,26 @@ install_config() { # relative_path destination
   note "installed $2"
 }
 
+# Clones the LazyVim starter and then drops its .git, which is what LazyVim's own install
+# does: the starter is a seed you own and edit, not a checkout to pull from. Left with its
+# history, the first `git pull` in there would fight your own commits.
+#
+# Same never-clobber rule as install_config, and it matters more here — ~/.config/nvim is
+# where your plugins, keymaps and options live, so overwriting it loses work rather than a
+# snapshot. Guarded on nvim existing too: a config directory for an editor the bundle failed
+# to install is just a directory that confuses the next run.
+install_lazyvim() { # destination
+  [ -e "$1" ] && return 0
+  command -v nvim >/dev/null || return 0
+
+  # --depth 1 because the history is deleted two lines later anyway.
+  git clone --depth 1 "$LAZYVIM_STARTER" "$1" 2>/dev/null ||
+    { note "could not clone the LazyVim starter" error; return 1; }
+  rm -rf "$1/.git"
+
+  note "installed the LazyVim starter at $1"
+}
+
 # Prints the BREW_PACKAGES entries that are not installed yet, one per line.
 #
 # `brew install` on a package that is already there still costs about a second, so a
@@ -341,6 +366,11 @@ install_config() { # relative_path destination
 # (dmtrkovalenko/fff/fff-mcp installs as fff-mcp), and version aliases list under the
 # major they resolve to (postgresql as postgresql@18) — miss that one and postgresql is
 # reported missing forever, reinstalling on every run.
+#
+# Plain aliases are the third class, and the one this deliberately does not handle: `nvim` is
+# an alias for the neovim formula and lists under that name, with nothing in the spelling to
+# key off. So BREW_PACKAGES spells canonical names instead — resolving an alias costs a `brew
+# info` per package, and being instant is this function's entire reason to exist.
 missing_packages() {
   local installed pkg name
   installed=" $(brew list --formula -1 2>/dev/null | tr '\n' ' ')$(brew list --cask -1 2>/dev/null | tr '\n' ' ') "
@@ -457,6 +487,8 @@ main() {
   install_config config/warp/settings.toml "$HOME/.warp/settings.toml"
   install_config config/warp/keybindings.yaml "$HOME/.warp/keybindings.yaml"
 
+  install_lazyvim "$HOME/.config/nvim"
+
   summary
   echo
   note "Grant these by hand, once: $TCC_APPS" warn
@@ -528,6 +560,33 @@ self_test() {
     echo "ok: install_config copies the tracked config into place"
   fi
   rm -rf "$cfgdir"
+
+  # install_lazyvim must leave an existing ~/.config/nvim alone. Clobbering that one is not
+  # losing a snapshot, it is losing the plugins and keymaps you wrote. Both checks stay off
+  # the network: the first returns at the -e guard, the second at the nvim guard.
+  local nvimdir
+  nvimdir="$(mktemp -d -t dev-setup-nvim)"
+  printf 'mine\n' >"$nvimdir/init.lua"
+  install_lazyvim "$nvimdir" >/dev/null
+  if [ "$(cat "$nvimdir/init.lua")" != "mine" ]; then
+    echo "FAIL: install_lazyvim overwrote an existing config"
+    rm -rf "$nvimdir"
+    exit 1
+  fi
+  rm -rf "$nvimdir"
+  echo "ok: install_lazyvim leaves an existing config alone"
+
+  # And it must not clone a config for an editor that is not there. Same subshell PATH
+  # override as the gum gate test, so it does not leak.
+  nvimdir="$(mktemp -d -t dev-setup-nvim)/nvim"
+  ( PATH=/nonexistent; install_lazyvim "$nvimdir" ) >/dev/null
+  if [ -e "$nvimdir" ]; then
+    echo "FAIL: install_lazyvim cloned with nvim missing from PATH"
+    rm -rf "$(dirname "$nvimdir")"
+    exit 1
+  fi
+  rm -rf "$(dirname "$nvimdir")"
+  echo "ok: install_lazyvim does nothing when nvim is not installed"
 
   # step records each outcome and never aborts the run
   GUM=0
