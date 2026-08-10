@@ -1,6 +1,6 @@
 # dev-setup
 
-One shell script that takes a fresh Mac to a working one: Homebrew, 36 formulae
+One shell script that takes a fresh Mac to a working one: Homebrew, 38 formulae
 and casks, mise-managed runtimes, System Settings, app preferences, and the shell
 hooks that make the whole thing work in a new terminal.
 
@@ -39,8 +39,8 @@ preferences. Answering no to one does not answer no to the others.
 | --- | --- |
 | Shell and search | `fd` `ripgrep` `fzf` `fff-mcp` `zoxide` `mise` `gh` `lazygit` `nvim` `topgrade` `rtk` `mole` |
 | Windows and desktop | `amethyst` `loop` `monitorcontrol` `mos` `raycast` `meetingbar` |
-| Security | `keepassxc` `gnupg` `knockknock` `oversight` `taskexplorer` |
-| Apps | `warp` `helium-browser` `obsidian` `slack` `zoom` `iina` |
+| Security | `keepassxc` `gnupg` `lulu` `knockknock` `oversight` `taskexplorer` |
+| Apps | `warp` `helium-browser` `obsidian` `slack` `zoom` `iina` `localsend` |
 | Dev dependencies | `postgresql` `redis` `libyaml` `readline` `zlib` `shared-mime-info` |
 | Font | `font-fira-code-nerd-font` |
 
@@ -85,7 +85,8 @@ Accessibility, Screen Recording and Full Disk Access live in the TCC database,
 which SIP protects and only an Apple-internal tool writes. Amethyst, Loop,
 MonitorControl and Raycast do nothing until Accessibility is ticked; OverSight
 needs Screen Recording plus the microphone and camera; KnockKnock and
-TaskExplorer want Full Disk Access.
+TaskExplorer want Full Disk Access. LuLu is not TCC but has the same shape: it
+stays inert as a firewall until its system extension is approved.
 
 The run ends by naming them and opening the Accessibility pane, rather than
 pretending they are handled.

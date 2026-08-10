@@ -47,11 +47,13 @@ RAW_URL="https://raw.githubusercontent.com/Thejus-Paul/dev-setup/main"
 # are dragging, amethyst retiles every window on the space by itself. Neither does the
 # other's job, so neither replaces it.
 #
-# knockknock, oversight and taskexplorer are Objective-See's. They report what a machine
-# persists, records and runs rather than blocking any of it, so they cost nothing until asked.
+# knockknock, oversight and taskexplorer are Objective-See's reporting tools: they say what a
+# machine persists, records and runs, and cost nothing until asked. lulu is theirs too but is
+# not one of them — it is a firewall that blocks outbound connections and prompts on the ones
+# it does not recognise, so it changes how the machine behaves rather than just describing it.
 BREW_PACKAGES="amethyst dmtrkovalenko/fff/fff-mcp fd font-fira-code-nerd-font fzf gh gnupg \
-helium-browser iina keepassxc knockknock lazygit libyaml loop meetingbar mise mole \
-monitorcontrol mos nvim obsidian oversight postgresql raycast readline redis ripgrep rtk \
+helium-browser iina keepassxc knockknock lazygit libyaml localsend loop lulu meetingbar mise \
+mole monitorcontrol mos nvim obsidian oversight postgresql raycast readline redis ripgrep rtk \
 shared-mime-info slack taskexplorer topgrade warp zlib zoom zoxide"
 
 # Homebrew 6 asks for confirmation before installing dependencies. The gum
@@ -154,7 +156,8 @@ defaults write com.raycast.macos useHyperKeyIcon -bool false
 # was skipped for brevity — it is one no script can perform. Every app below is inert until
 # its box is ticked, which makes naming them the honest end to the run.
 TCC_APPS="Accessibility for Amethyst, Loop, MonitorControl and Raycast; Screen Recording, \
-microphone and camera for OverSight; Full Disk Access for KnockKnock and TaskExplorer."
+microphone and camera for OverSight; Full Disk Access for KnockKnock and TaskExplorer; and a \
+system extension to approve for LuLu, which stays inert as a firewall until you do."
 ACCESSIBILITY_PANE="x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility"
 
 ZSHRC="$HOME/.zshrc"
