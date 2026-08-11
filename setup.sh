@@ -14,8 +14,8 @@
 #
 # Every step is idempotent, so rerunning it is how you top an existing machine
 # up. Steps keep going after a failure; the summary table at the end is what to
-# read. Pipe the run (`./setup.sh | tee setup.log`) to turn gum off and get the
-# full unfiltered output back.
+# read. Pipe the run (`./setup.sh | tee setup.log`) to keep a copy: gum turns
+# itself off there, and the command output is the same either way.
 
 set -uo pipefail
 
@@ -72,17 +72,18 @@ RUNTIMES="ruby@latest node@latest"
 # System Settings, read off a machine already tuned by hand so a fresh box
 # comes up the same way. One string rather than one call per setting: `step`
 # runs its argument through `sh -c`, where a shell function defined here would
-# not exist, and twelve spinners for twelve instant writes is noise, not
-# progress.
+# not exist, and twelve labels and twelve summary rows for twelve instant
+# writes is noise, not progress.
 #
 # Tap-to-click needs all three writes. The two driver domains are the built-in
 # and the Bluetooth trackpad; the -currentHost one is what the Accessibility
 # and login-window paths read, and without it the setting looks applied in
 # System Settings but does not survive a reboot.
 #
-# The sudo lines rely on prime_sudo's warm timestamp. Under `gum spin` stdin is
-# /dev/null, so a lapsed one fails the step rather than hanging on a password
-# prompt nobody can see.
+# The sudo lines rely on prime_sudo's warm timestamp. A lapsed one prompts, which
+# is at least answerable now that steps run with the terminal attached — but a
+# password question in the middle of a run that promised to be unattended is what
+# the keepalive exists to prevent.
 #
 # `set -e` is load-bearing. The block ends with a `killall … || true`, and without it
 # that final line is what `step` reads the exit status from — so a sudo line that
@@ -173,8 +174,8 @@ GUM=0
 # One "<label>,ok" or "<label>,FAILED" entry per step, rendered by summary.
 RESULTS=()
 
-# Both -t checks matter. `gum spin` runs a Bubble Tea program: it draws on
-# stdout and reads from stdin — terminal capability replies, and ^C. A
+# Both -t checks matter. `gum confirm` runs a Bubble Tea program: it draws on
+# stdout and reads from stdin — terminal capability replies, arrow keys, ^C. A
 # non-terminal on either side breaks it.
 #
 # stdin is the easy one to miss. `curl … | bash` leaves stdout a terminal
@@ -212,8 +213,8 @@ note() { # message [level]
 }
 
 # Homebrew's own ask-mode stays disabled (HOMEBREW_NO_ASK above). This is the
-# same question asked somewhere it can actually be seen: before the spinner
-# starts, rather than from behind it.
+# same question asked once and up front, in terms of the whole bundle, rather
+# than per-package from somewhere in the middle of the install output.
 #
 # Two implementations, because the gum gate answers "can we draw a TUI?" and
 # this question needs "is anyone there to answer?" — which is only `-t 0`.
@@ -244,26 +245,26 @@ confirm() { # question
 }
 
 # Always returns 0. A failing step is recorded, not fatal — the summary is the report.
+#
+# No spinner, deliberately. Every command here prints something worth watching — brew's
+# downloads, extractions and caveats, mise's build output — and `gum spin` replaces all
+# of it with one line that cannot say how far along it is or why it is stuck. Its
+# --show-error only surfaces that output on failure, so a long install looked identical
+# to a hang; --show-output is not the fix either, because it repaints the whole block
+# every frame and brew's progress bars come out as confetti.
+#
+# The terminal is inherited rather than redirected to /dev/null, so a command that does
+# prompt asks somewhere it can be seen and answered.
 step() { # label command
   local label="$1" cmd="$2" ok
-  if [ "$GUM" = 1 ]; then
-    # `exec </dev/null;` prefix (not `</dev/null` on $cmd) so it covers the
-    # whole sh -c string. gum spin hands its child the real TTY on both
-    # stdin and stdout; without this, a child that prompts (e.g. brew's
-    # ask-mode) blocks on a prompt nobody can see. The plain branch below
-    # is left with its inherited terminal on purpose: there, a prompt is
-    # visible and answerable, so it must not be redirected the same way.
-    gum spin --title "$label" --show-error -- sh -c "exec </dev/null; $cmd"
-  else
-    echo "==> $label"
-    sh -c "$cmd"
-  fi
+  echo "==> $label"
+  sh -c "$cmd"
   ok=$?
 
   if [ "$ok" = 0 ]; then
     RESULTS+=("$label,ok")
-    # "$label ok", not "$label": the plain branch already printed "==> $label"
-    # before running, so a bare label here reads as the same line twice.
+    # "$label ok", not "$label": "==> $label" was already printed before the
+    # command ran, so a bare label here reads as the same line twice.
     note "$label ok"
   else
     RESULTS+=("$label,FAILED")
@@ -288,9 +289,10 @@ summary() {
   done
 }
 
-# gum spin hides its command's output, including sudo's password prompt. Ask
-# once here, where the prompt is visible, then keep the timestamp warm: macOS
-# expires it after five minutes and the brew run is far longer than that.
+# Ask once here, before any output starts scrolling, then keep the timestamp
+# warm: macOS expires it after five minutes and the brew run is far longer than
+# that. Unprimed, the prompt lands somewhere inside brew's output instead, which
+# is the least likely place anyone is looking.
 prime_sudo() {
   note "Asking for your password once, so the rest of the run is unattended."
   if sudo -v; then
@@ -358,8 +360,8 @@ install_lazyvim() { # destination
 # Prints the BREW_PACKAGES entries that are not installed yet, one per line.
 #
 # `brew install` on a package that is already there still costs about a second, so a
-# rerun on a provisioned machine spent a minute behind a spinner that could not say
-# why it was still going. Two `brew list` calls answer the same question for the whole
+# rerun on a provisioned machine spent a minute reinstalling what it already had.
+# Two `brew list` calls answer the same question for the whole
 # machine in under a twentieth of a second, which is what makes the rerun case instant.
 #
 # Two spellings have to be normalised. Tap-qualified entries list under their bare name
@@ -398,15 +400,14 @@ main() {
     append_once 'brew shellenv' "$BREW_SHELLENV" "$ZSHRC"
   fi
 
-  # gum installs on its own line, before the bundle, so the longest step
-  # is the first one that gets a spinner.
+  # gum installs on its own line, before the bundle, so the banner, the two
+  # questions and the summary table are styled for everything after it.
   step "gum" "brew install gum"
   detect_gum
 
   # Asked and installed in terms of what is actually missing, so a rerun on a provisioned
-  # machine answers in a fraction of a second instead of sitting on a spinner. The count
-  # goes out as a note first: under gum that line stays on screen above the spinner, which
-  # is the difference between "still working" and "stuck".
+  # machine answers in a fraction of a second. The count goes out as a note first, so the
+  # brew output that follows has a denominator to read it against.
   MISSING="$(missing_packages)"
   TOTAL=$(set -- $BREW_PACKAGES; echo $#)
   COUNT=$(set -- $MISSING; echo $#)
@@ -499,15 +500,6 @@ main() {
 
   echo
   echo "Done. Open a new terminal, or: source $ZSHRC"
-  # Only true when the spinner actually ran. A piped run already printed every
-  # caveat in full, so pointing at `brew info` there is advice for a run that
-  # did not happen.
-  #
-  # An `&&` one-liner here would make main's exit status 1 on a plain run,
-  # because this is the last statement.
-  if [ "$GUM" = 1 ]; then
-    echo "The spinner hid install caveats (e.g. how to start services): brew info postgresql redis"
-  fi
 }
 
 self_test() {
